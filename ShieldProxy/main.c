@@ -4,7 +4,7 @@ int main(int argc, char* argv [])
 {
 	int err;
 
-	printf("Shield Streaming Proxy for Windows v0.1\n\n");
+	printf("Shield Streaming Proxy for Windows v0.2\n\n");
 
 	// Bring up the platform support code first
 	err = platform_init();

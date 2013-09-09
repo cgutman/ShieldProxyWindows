@@ -102,20 +102,31 @@ int relay_loop(void)
 			return -1;
 		}
 
-		// Check if the source is a local link
-		for (i = 0; i < table_len; i++)
+		// Real MDNS is 5353 -> 5353
+		if (src_addr.sin_port == htons(MDNS_PORT))
 		{
-			if (src_addr.sin_addr.S_un.S_addr == ip_table[i])
+			// Check if the source is a local link
+			for (i = 0; i < table_len; i++)
 			{
-				// This needs to go to the client
-				dst_addr = last_client_addr;
-				break;
+				if (src_addr.sin_addr.S_un.S_addr == ip_table[i])
+				{
+					// This needs to go to the client
+					dst_addr = last_client_addr;
+					break;
+				}
+			}
+
+			// If it came in from the multicast group
+			// and it's not from a local source, it's other
+			// multicast traffic which we ignore.
+			if (i == table_len)
+			{
+				continue;
 			}
 		}
-
-		// We didn't find one on the local link so it's an incoming packet
-		if (i == table_len)
+		else
 		{
+			// This looks like it came from the other relay
 			dst_addr.sin_addr.S_un.S_addr = htonl(MDNS_ADDR);
 			dst_addr.sin_port = htons(MDNS_PORT);
 
