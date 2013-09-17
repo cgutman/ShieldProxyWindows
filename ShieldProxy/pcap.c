@@ -34,7 +34,7 @@ struct udpv4_header {
 struct interface_context {
 	pcap_t *pcap_handle;
 	struct in_addr iface_address;
-	struct udprelay_context relay_context;
+	struct udprelay_adapter_context relay_context;
 };
 
 struct interface_context *interface_table;
@@ -44,7 +44,10 @@ void packet_handler(u_char *param, const struct pcap_pkthdr *header, const u_cha
 	struct interface_context *iface_context;
 	struct ipv4_header *ip_hdr;
 	struct udpv4_header *udp_hdr;
-	u_char *data;
+	u_char *data, *end;
+	int i;
+
+	end = (u_char*)(pkt_data + header->caplen);
 
 	// We get this pointer as a parameter in our callback per adapter
 	iface_context = (struct interface_context *)param;
@@ -52,6 +55,8 @@ void packet_handler(u_char *param, const struct pcap_pkthdr *header, const u_cha
 	// This must be an IP packet since our filter requires it to pass, so we know there's
 	// an IPv4 header after the Ethernet header
 	ip_hdr = (struct ipv4_header *)(pkt_data + ETHERNET_HEADER_SIZE);
+	if ((u_char*) ip_hdr + sizeof(struct ipv4_header) >= end)
+		return;
 
 	// Exclude packets that don't refer to this interface at all
 	if ((ip_hdr->src_addr != iface_context->iface_address.S_un.S_addr) &&
@@ -62,47 +67,55 @@ void packet_handler(u_char *param, const struct pcap_pkthdr *header, const u_cha
 
 	// We'll need to examine the UDP header
 	udp_hdr = (struct udpv4_header *)((u_char*) ip_hdr + ((ip_hdr->ver_ihl & 0xF) * 4));
-
-	//
-	// We have 2 cases to deal with here
-	// a) The packet is from the Shield to our SHIELD_CAPTURE_PORT and from an arbitrary port
-	// b) The packet is from the computer from and to SHIELD_CAPTURE_PORT
-	//
-
-	// A and B both exclude packets not destined for the SHIELD_CAPTURE_PORT
-	if (udp_hdr->dst_port != htons(SHIELD_CAPTURE_PORT))
-	{
+	if ((u_char*) udp_hdr + sizeof(struct udpv4_header) >= end)
 		return;
-	}
 
-	// We'll handle A first
-	if (udp_hdr->src_port != htons(SHIELD_CAPTURE_PORT))
+	for (i = 0; i < SHIELD_UDP_PORTS; i++)
 	{
-		// This packet shouldn't be from us
-		if (ip_hdr->src_addr == iface_context->iface_address.S_un.S_addr)
+		//
+		// We have 2 cases to deal with here
+		// a) The packet is from the Shield to a port we're forwarding and from an arbitrary port
+		// b) The packet is from the computer from and to a port we're forwarding
+		//
+
+		// A and B both exclude packets not destined for any port of ours
+		if (udp_hdr->dst_port != UDP_PORTS[i])
 		{
-			return;
+			// Not this port
+			continue;
 		}
 
-		// Tell the UDP relay about the new port that Shield is talking to us with
-		udprelay_reconfigure(&iface_context->relay_context, udp_hdr->src_port);
-	}
-	// Now B
-	else if (udp_hdr->src_port == htons(SHIELD_CAPTURE_PORT))
-	{
-		// This packet must be from us
-		if (ip_hdr->src_addr != iface_context->iface_address.S_un.S_addr)
+		// We'll handle A first
+		if (udp_hdr->src_port != UDP_PORTS[i])
 		{
-			return;
-		}
+			// This packet shouldn't be from us
+			if (ip_hdr->src_addr == iface_context->iface_address.S_un.S_addr)
+			{
+				return;
+			}
 
-		// The UDP relay needs to forward this on the proper port
-		data = (u_char*) udp_hdr + sizeof(*udp_hdr);
-		udprelay_forward(&iface_context->relay_context,
-			ip_hdr->dst_addr, // Send it to the same place as the original
-			(char*)data, // The UDP datagram's data
-			header->caplen - (data - pkt_data));
+			// Tell the UDP relay about the new port that Shield is talking to us with
+			udprelay_reconfigure(&iface_context->relay_context, udp_hdr->src_port, udp_hdr->dst_port);
+		}
+		// Now B
+		else if (udp_hdr->src_port == UDP_PORTS[i])
+		{
+			// This packet must be from us
+			if (ip_hdr->src_addr != iface_context->iface_address.S_un.S_addr)
+			{
+				return;
+			}
+
+			// The UDP relay needs to forward this on the proper port
+			data = (u_char*) udp_hdr + sizeof(*udp_hdr);
+			udprelay_forward(&iface_context->relay_context,
+				ip_hdr->dst_addr, // Send it to the same place as the original
+				udp_hdr->dst_port, // Send it to the port corresponding to the real destination
+				(char*) data, // The UDP datagram's data
+				header->caplen - (data - pkt_data));
+		}
 	}
+	
 }
 
 void pcap_looper_thread(void* param)

@@ -18,7 +18,6 @@
 
 // Compile-time relay config
 #define MDNS_RELAY_PORT 5354
-#define SHIELD_CAPTURE_PORT 47998
 
 // PCAP code
 int pcap_init(void);
