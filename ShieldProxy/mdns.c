@@ -90,6 +90,12 @@ int relay_loop(void)
 		return -1;
 	}
 
+	if (table_len == 0)
+	{
+		printf("No operational network interfaces detected\n");
+		return 0;
+	}
+
 	printf("\nRelay is up and running\n\n");
 	for (;;)
 	{
