@@ -50,6 +50,7 @@ int platform_iface_ip_table(unsigned int *ip_table, unsigned int *ip_table_len)
 	ULONG addressListSize;
 	ULONG addressCount;
 	struct sockaddr_in *addr;
+	MIB_IFROW ifRow;
 
 	// Call to get the length first
 	addressListHead = NULL;
@@ -97,10 +98,6 @@ int platform_iface_ip_table(unsigned int *ip_table, unsigned int *ip_table_len)
 		currentAddress != NULL && addressCount < *ip_table_len;
 		currentAddress = currentAddress->Next)
 	{
-		// Skip downed interfaces
-		if (currentAddress->OperStatus != IfOperStatusUp)
-			continue;
-
 		// Skip it if there isn't an address
 		if (!currentAddress->FirstUnicastAddress)
 			continue;
@@ -111,6 +108,21 @@ int platform_iface_ip_table(unsigned int *ip_table, unsigned int *ip_table_len)
 
 		// Skip the loopback adapter
 		if (currentAddress->IfType == IF_TYPE_SOFTWARE_LOOPBACK)
+			continue;
+
+		// We need the interface entry to check for operational status
+		ifRow.dwIndex = currentAddress->IfIndex;
+		err = GetIfEntry(&ifRow);
+		if (err != NO_ERROR)
+			continue;
+
+		// Check that the interface is enabled
+		if (ifRow.dwAdminStatus != MIB_IF_ADMIN_STATUS_UP)
+			continue;
+
+		// Check that the interface is up with a link
+		if (ifRow.dwOperStatus != IF_OPER_STATUS_OPERATIONAL &&
+			ifRow.dwOperStatus != IF_OPER_STATUS_CONNECTED)
 			continue;
 
 		// Get the address
