@@ -135,6 +135,17 @@ int pcap_init(void)
 	unsigned int netmask;
 	struct bpf_program filter_code;
 	pcap_addr_t *cur_addr;
+	unsigned int ip_table[MAX_IP_COUNT];
+	unsigned int os_iftable_len, j;
+
+	// Get all IPs for local interfaces from the OS
+	os_iftable_len = MAX_IP_COUNT;
+	err = platform_iface_ip_table(ip_table, &os_iftable_len);
+	if (err != 0)
+	{
+		printf("Failed to get IP table\n");
+		return -1;
+	}
 
 	// Get a list of all the NICs on the machine
 	err = pcap_findalldevs(&devices, errstr);
@@ -204,6 +215,19 @@ int pcap_init(void)
 			goto skip_dev;
 		}
 
+		// Check and make sure this is in our list from the OS API
+		for (j = 0; j < os_iftable_len; j++)
+		{
+			if (interface_table[i].iface_address.S_un.S_addr == ip_table[j])
+				break;
+		}
+
+		// It's not in our list from the OS, which means it's probably down
+		if (j == os_iftable_len)
+		{
+			goto skip_dev;
+		}
+
 		// Compile the filter
 		netmask = ((struct sockaddr_in *)(cur_dev->addresses->netmask))->sin_addr.S_un.S_addr;
 		err = pcap_compile(
@@ -256,6 +280,7 @@ int pcap_init(void)
 		// Close the device that we failed to capture on
 		pcap_close(interface_table[i].pcap_handle);
 		interface_table[i].pcap_handle = NULL;
+		err = 0;
 	}
 
 cleanup:
