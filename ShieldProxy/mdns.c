@@ -137,10 +137,11 @@ int relay_loop(void)
 			dst_addr.sin_port = htons(MDNS_PORT);
 
 			// Remember the source for next time
-			if (last_client_addr.sin_addr.S_un.S_addr != src_addr.sin_addr.S_un.S_addr)
+			if (last_client_addr.sin_addr.S_un.S_addr != src_addr.sin_addr.S_un.S_addr ||
+				last_client_addr.sin_port != src_addr.sin_port)
 			{
 				last_client_addr = src_addr;
-				printf("Relaying MDNS traffic to %s\n", inet_ntoa(src_addr.sin_addr));
+				printf("Relaying MDNS traffic to %s:%d\n", inet_ntoa(src_addr.sin_addr), htons(src_addr.sin_port));
 			}
 		}
 
