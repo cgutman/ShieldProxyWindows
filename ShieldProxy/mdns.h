@@ -8,3 +8,4 @@
 
 int init_mdns_socket(void);
 int relay_loop(void);
+int reconfigure_mdns_socket(void);

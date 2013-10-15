@@ -18,10 +18,33 @@ udprelay_lookup_port_context_by_dst(struct udprelay_adapter_context *context, un
 	return NULL;
 }
 
+int udprelay_unregister(struct udprelay_adapter_context *context)
+{
+	int i;
+
+	// Close the sockets for each port
+	for (i = 0; i < SHIELD_UDP_PORTS; i++)
+	{
+		if (context->ports[i].socket != -1)
+		{
+			closesocket(context->ports[i].socket);
+			context->ports[i].socket = -1;
+		}
+	}
+
+	return 0;
+}
+
 int udprelay_register(struct udprelay_adapter_context *context, struct in_addr iface_addr)
 {
 	struct sockaddr_in bindaddr;
 	int err, opt, i;
+
+	// Initialize the sockets to -1 for proper cleanup
+	for (i = 0; i < SHIELD_UDP_PORTS; i++)
+	{
+		context->ports[i].socket = -1;
+	}
 
 	// Set the default ports
 	for (i = 0; i < SHIELD_UDP_PORTS; i++)
@@ -45,6 +68,7 @@ int udprelay_register(struct udprelay_adapter_context *context, struct in_addr i
 		{
 			printf("Failed to allow address reuse (%d)\n", platform_last_error());
 			closesocket(context->ports[i].socket);
+			context->ports[i].socket = -1;
 			return -1;
 		}
 
@@ -58,6 +82,7 @@ int udprelay_register(struct udprelay_adapter_context *context, struct in_addr i
 		{
 			printf("Failed to bind UDP forwarding socket (%d)\n", platform_last_error());
 			closesocket(context->ports[i].socket);
+			context->ports[i].socket = -1;
 			return -1;
 		}
 	}

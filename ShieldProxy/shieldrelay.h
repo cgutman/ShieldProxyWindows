@@ -19,5 +19,9 @@
 // Compile-time relay config
 #define MDNS_RELAY_PORT 5354
 
+// Version string
+#define VERSION_STR "v0.5"
+
 // PCAP code
 int pcap_init(void);
+int pcap_reconfigure(void);

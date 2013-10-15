@@ -22,6 +22,7 @@ struct udprelay_adapter_context {
 	struct udprelay_port_context ports[SHIELD_UDP_PORTS];
 };
 
+int udprelay_unregister(struct udprelay_adapter_context *context);
 int udprelay_register(struct udprelay_adapter_context *context, struct in_addr iface_addr);
 void udprelay_reconfigure(struct udprelay_adapter_context *context, unsigned short src_port,
 	unsigned short dst_port);

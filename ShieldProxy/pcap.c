@@ -38,6 +38,7 @@ struct interface_context {
 };
 
 struct interface_context *interface_table;
+int dev_count;
 
 void packet_handler(u_char *param, const struct pcap_pkthdr *header, const u_char *pkt_data)
 {
@@ -126,12 +127,65 @@ void pcap_looper_thread(void* param)
 	pcap_loop(iface_context->pcap_handle, 0, packet_handler, (u_char*)iface_context);
 }
 
+void stop_pcap_looper(struct interface_context* iface_context)
+{
+	// If the device has no pcap active, there's nothing to do
+	if (iface_context->pcap_handle == NULL)
+		return;
+
+	// This breaks out of the pcap_loop() blocking call that we're
+	// inside in the looper thread for this interface
+	pcap_breakloop(iface_context->pcap_handle);
+	pcap_close(iface_context->pcap_handle);
+}
+
+int pcap_deinit(void)
+{
+	int i;
+
+	for (i = 0; i < dev_count; i++)
+	{
+		// Stop the looper for this interface
+		stop_pcap_looper(&interface_table[i]);
+
+		// Stop the pcap on this interface
+		udprelay_unregister(&interface_table[i].relay_context);
+	}
+
+	return 0;
+}
+
+int pcap_reconfigure(void)
+{
+	int err;
+
+	// This is a naive way of reconfiguring:
+	// just teardown and reinitialize the pcap infrastructure
+
+	err = pcap_deinit();
+	if (err != 0)
+	{
+		printf("Failed to deinitialize pcap infrastructure\n");
+		return err;
+	}
+
+	err = pcap_init();
+	if (err != 0)
+	{
+		printf("Failed to reinitialize pcap infrastructure\n");
+		return err;
+	}
+
+	return 0;
+}
+
+
 int pcap_init(void)
 {
 	int err;
 	char errstr[PCAP_ERRBUF_SIZE];
 	pcap_if_t *devices, *cur_dev;
-	int dev_count, i;
+	int i;
 	unsigned int netmask;
 	struct bpf_program filter_code;
 	pcap_addr_t *cur_addr;
@@ -144,7 +198,7 @@ int pcap_init(void)
 	if (err != 0)
 	{
 		printf("Failed to get IP table\n");
-		return -1;
+		return err;
 	}
 
 	// Get a list of all the NICs on the machine
@@ -152,7 +206,7 @@ int pcap_init(void)
 	if (err < 0)
 	{
 		printf("pcap_findalldevs failed: %s\n", errstr);
-		return -1;
+		return err;
 	}
 
 	// Count them to allocate our interface table

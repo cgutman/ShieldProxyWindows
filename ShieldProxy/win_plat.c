@@ -10,24 +10,65 @@ struct thread_stub_tuple {
 	void* thread_parameter;
 };
 
+HANDLE notification_handle;
+
 int platform_init(void)
 {
 	WORD version_requested;
 	WSADATA data;
 
+	notification_handle = INVALID_HANDLE_VALUE;
+
 	version_requested = MAKEWORD(2, 2);
 
+	// Initialize WinSock
 	return WSAStartup(version_requested, &data);
+}
+
+void platform_mutex_init(PLATFORM_MUTEX *mutex)
+{
+	InitializeCriticalSection(mutex);
+}
+
+void platform_mutex_acquire(PLATFORM_MUTEX *mutex)
+{
+	EnterCriticalSection(mutex);
+}
+
+void platform_mutex_release(PLATFORM_MUTEX *mutex)
+{
+	LeaveCriticalSection(mutex);
 }
 
 void platform_cleanup(void)
 {
+	// Unregister a change notification if we have one
+	if (notification_handle != INVALID_HANDLE_VALUE)
+	{
+		CancelMibChangeNotify2(notification_handle);
+	}
+
+	// Cleanup WinSock
 	WSACleanup();
 }
 
 int platform_last_error(void)
 {
 	return WSAGetLastError();
+}
+
+VOID
+WINAPI
+addr_change_callback(
+	_In_ PVOID CallerContext,
+	_In_ OPTIONAL PMIB_UNICASTIPADDRESS_ROW Row,
+	_In_ MIB_NOTIFICATION_TYPE NotificationType
+)
+{
+	reconfigure_callback_function reconfig_callback = (reconfigure_callback_function) CallerContext;
+
+	// Call the reconfiguration callback
+	reconfig_callback();
 }
 
 DWORD
@@ -43,6 +84,28 @@ thread_stub(_In_ LPVOID lpParameter)
 	return 0;
 }
 
+int platform_notify_iface_change(reconfigure_callback_function reconfig_callback)
+{
+	ULONG err;
+
+	// Request callbacks when a unicast IPv4 interface address changes
+	err = NotifyUnicastIpAddressChange(AF_INET,
+		addr_change_callback,
+		reconfig_callback,
+		FALSE,
+		&notification_handle);
+	if (err != 0)
+	{
+		printf("Failed to register interface change callback\n");
+		notification_handle = INVALID_HANDLE_VALUE;
+		return -1;
+	}
+
+	// The handle will be unregistered in platform_cleanup()
+
+	return 0;
+}
+
 int platform_iface_ip_table(unsigned int *ip_table, unsigned int *ip_table_len)
 {
 	ULONG err;
@@ -54,41 +117,51 @@ int platform_iface_ip_table(unsigned int *ip_table, unsigned int *ip_table_len)
 
 	// Call to get the length first
 	addressListHead = NULL;
-	err = GetAdaptersAddresses(
-		AF_INET,
-		GAA_FLAG_SKIP_ANYCAST |
-		GAA_FLAG_SKIP_MULTICAST |
-		GAA_FLAG_SKIP_DNS_SERVER |
-		GAA_FLAG_SKIP_FRIENDLY_NAME,
-		NULL,
-		addressListHead,
-		&addressListSize);
-	if (err != ERROR_BUFFER_OVERFLOW)
+	do
 	{
-		printf("Failed to get adapter address list size: %d\n", err);
-		return -1;
-	}
+		// The first time, we need to get the size before we have a table
+		if (addressListHead == NULL)
+		{
+			err = GetAdaptersAddresses(
+				AF_INET,
+				GAA_FLAG_SKIP_ANYCAST |
+				GAA_FLAG_SKIP_MULTICAST |
+				GAA_FLAG_SKIP_DNS_SERVER |
+				GAA_FLAG_SKIP_FRIENDLY_NAME,
+				NULL,
+				addressListHead,
+				&addressListSize);
+			if (err != ERROR_BUFFER_OVERFLOW)
+			{
+				printf("Failed to get adapter address list size: %d\n", err);
+				return -1;
+			}
+		}
 
-	addressListHead = (PIP_ADAPTER_ADDRESSES)HeapAlloc(GetProcessHeap(), 0, addressListSize);
-	if (addressListHead == NULL)
-	{
-		printf("Failed to allocate adapter list memory\n");
-		return -1;
-	}
+		// Allocate the required size
+		addressListHead = (PIP_ADAPTER_ADDRESSES) HeapAlloc(GetProcessHeap(), 0, addressListSize);
+		if (addressListHead == NULL)
+		{
+			printf("Failed to allocate adapter list memory\n");
+			return -1;
+		}
 
-	// Now for real
-	err = GetAdaptersAddresses(
-		AF_INET,
-		GAA_FLAG_SKIP_ANYCAST |
-		GAA_FLAG_SKIP_MULTICAST |
-		GAA_FLAG_SKIP_DNS_SERVER |
-		GAA_FLAG_SKIP_FRIENDLY_NAME,
-		NULL,
-		addressListHead,
-		&addressListSize);
+		// Try again with the new buffer size
+		err = GetAdaptersAddresses(
+			AF_INET,
+			GAA_FLAG_SKIP_ANYCAST |
+			GAA_FLAG_SKIP_MULTICAST |
+			GAA_FLAG_SKIP_DNS_SERVER |
+			GAA_FLAG_SKIP_FRIENDLY_NAME,
+			NULL,
+			addressListHead,
+			&addressListSize);
+	} while (err == ERROR_BUFFER_OVERFLOW);
+
+	// Check if we successfully got an adapter list
 	if (err != NO_ERROR)
 	{
-		printf("Failed to get adapter address list size: %d\n", err);
+		printf("Failed to get adapter address list: %d\n", err);
 		HeapFree(GetProcessHeap(), 0, addressListHead);
 		return -1;
 	}
@@ -143,6 +216,12 @@ int platform_start_thread(thread_start_function thread_start, void* thread_param
 	struct thread_stub_tuple *tuple;
 
 	tuple = (struct thread_stub_tuple *) malloc(sizeof(*tuple));
+	if (tuple == NULL)
+	{
+		printf("Failed to allocate tuple\n");
+		return -1;
+	}
+
 	tuple->thread_start = thread_start;
 	tuple->thread_parameter = thread_parameter;
 
