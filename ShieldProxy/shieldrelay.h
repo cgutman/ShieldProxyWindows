@@ -14,10 +14,6 @@
 // Components of the relay
 #include "platform.h"
 #include "mdns.h"
-#include "udprelay.h"
 
 // Compile-time relay config
 #define MDNS_RELAY_PORT 5354
-
-// PCAP code
-int pcap_init(void);

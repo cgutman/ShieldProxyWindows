@@ -15,9 +15,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="udprelay.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="win_plat.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -27,15 +24,9 @@
     <ClCompile Include="mdns.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="pcap.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="shieldrelay.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="udprelay.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="win_plat.h">

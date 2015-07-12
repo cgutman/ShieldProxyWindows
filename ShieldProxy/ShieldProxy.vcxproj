@@ -13,15 +13,12 @@
   <ItemGroup>
     <ClCompile Include="main.c" />
     <ClCompile Include="mdns.c" />
-    <ClCompile Include="pcap.c" />
-    <ClCompile Include="udprelay.c" />
     <ClCompile Include="win_plat.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="mdns.h" />
     <ClInclude Include="platform.h" />
     <ClInclude Include="shieldrelay.h" />
-    <ClInclude Include="udprelay.h" />
     <ClInclude Include="win_plat.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
